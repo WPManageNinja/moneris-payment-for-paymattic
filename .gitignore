@@ -1,0 +1,41 @@
+/vendor/
+
+# Composer
+/composer.phar
+/composer.lock
+/composer.vendor/
+/composer.json
+/composer.lock
+
+# Environment files
+.env
+
+# IDE/Editor
+/.idea
+/.vscode
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# PHPUnit
+/phpunit.xml
+/.phpunit.result.cache
+
+# User-specific stuff
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Build results
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+build/
+bld/
+[Bb]in/
+[Oo]bj/
