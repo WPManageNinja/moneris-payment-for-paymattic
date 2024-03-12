@@ -29,10 +29,6 @@ class MonerisProcessor
 
     public function init()
     {
-        // dd("hitttttt");
-        // new MonerisElement();
-        // (new MonerisSettings())->init();
-        // dd('MonerisProcessor');
         new  \MonerisPaymentForPaymattic\Settings\MonerisElement();
         (new  \MonerisPaymentForPaymattic\Settings\MonerisSettings())->init();
         (new \MonerisPaymentForPaymattic\API\API())->init();

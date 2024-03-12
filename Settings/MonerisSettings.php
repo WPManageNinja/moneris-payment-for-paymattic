@@ -121,7 +121,7 @@ class MonerisSettings extends BasePaymentMethod
             'live_api_token' => '',
             'live_checkout_id' => '',
             'payment_channels' => [],
-            'update_available' => 'no',
+            'update_available' => self::checkForUpdate($slug),
         );
     }
 
