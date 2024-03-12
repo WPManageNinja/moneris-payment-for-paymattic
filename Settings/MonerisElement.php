@@ -28,8 +28,7 @@ class MonerisElement extends BaseComponent
         $methods['moneris'] = array(
             'label' => 'Moneris',
             'isActive' => true,
-            // 'logo' => MONERIS_PAYMENT_FOR_PAYMATTIC_URL . 'assets/images/gateways/moneris.svg',
-            'logo' => WPPAYFORM_URL . 'assets/images/gateways/paystack.svg',
+            'logo' => MONERIS_PAYMENT_FOR_PAYMATTIC_URL . 'assets/moneris.svg',
             'editor_elements' => array(
                 'label' => array(
                     'label' => 'Payment Option Label',

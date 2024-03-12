@@ -18,7 +18,7 @@ class MonerisSettings extends BasePaymentMethod
             'moneris',
             'Moneris',
             [],
-            WPPAYFORM_URL .'assets/images/gateways/paystack.svg'
+            WPPAYFORM_URL .'assets/images/gateways/moneris.svg'
         );
     }
 
