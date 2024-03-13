@@ -247,11 +247,15 @@ class MonerisProcessor
             ), 423);
         }
 
+        $orderItemModel = new OrderItem();
+        $discountItems = $orderItemModel->getDiscountItems($submission->id);
+
         if ($hasLineItems) {
-            $preloadRequestArgs['txn_total'] = number_format($transaction->payment_total / 100, 2, '.', '');   
+            $preloadRequestArgs['txn_total'] = number_format($transaction->payment_total / 100, 2, '.', ''); 
+            $this->maybeHasDiscounts($submission, $discountItems, $form_data, $preloadRequestArgs, $transaction->payment_total);  
         }
        
-        $preloadRequestArgs = $this->maybeHasSubscription($preloadRequestArgs,$submission, $form_data, $paymentMode, $hasSubscriptions, $hasLineItems, $currency);
+        $preloadRequestArgs = $this->maybeHasSubscription($preloadRequestArgs,$submission, $form_data, $paymentMode, $hasSubscriptions, $discountItems, $hasLineItems, $currency);
  
 
         $preloadRequestArgs['currency'] = $currency;
@@ -270,8 +274,8 @@ class MonerisProcessor
             ];
         }
 
+        $cart = $this->getCartSummary($preloadRequestArgs, $transaction, $submission, $form_data, $lineItems, $hasSubscriptions, $discountItems);
 
-        $cart = $this->getCartSummary($transaction, $submission, $form_data, $hasSubscriptions);
         $preloadRequestArgs['cart'] = $cart;
 
         $preloadRequestArgs = apply_filters('wppayform/moneris_payment_args', $preloadRequestArgs, $submission, $form_data, $transaction, $hasSubscriptions);
@@ -293,14 +297,9 @@ class MonerisProcessor
         return $api->makeApiCall('', $preloadRequestArgs, $form_data['form_id'], 'POST');
     }
 
-    public function getCartSummary($transaction, $submission, $formData, $hasSubscriptions = false)
+    public function getCartSummary($transaction, $submission, $formData, $form_data, $items, $hasSubscriptions = false, $discountItems = [])
     {
-        $orderItemModel = new OrderItem();
-        $items = $orderItemModel->getOrderItems($submission->id);
-        $discountItems = $orderItemModel->getDiscountItems($submission->id);
-        $summary = array();
         $subtotal = 0;
-
         $cart = array(
             'items' => [],
         );
@@ -353,6 +352,19 @@ class MonerisProcessor
                     'description' =>  $description,
                 );
             }
+
+            // add discounts as item to the cart for user clearification
+            if (count($discountItems) > 0) {
+                foreach ($discountItems as $discountItem) {
+                    $item = array(
+                        'description' => 'Discount on ' . preg_replace('/[^a-zA-Z0-9\s]/', '', strip_tags(html_entity_decode($discountItem->item_name))) . ' Coupon',
+                        'unit_cost' => number_format($discountItem->line_total / 100, 2, '.', ''),
+                        'product_code' => (string) $discountItem->id,
+                        'quantity' => '1',
+                    );
+                    $cart['items'][] = $item;
+                }
+            }
         }
 
         $cart['subtotal'] = number_format($subtotal, 2, '.', '');
@@ -360,7 +372,6 @@ class MonerisProcessor
         if ($hasSubscriptions) {
             // We just need the first subscriptipn
             $subscription = $this->getValidSubscription($submission);
-            // dd($subscription, 'cart summary');
             $item = array(
                 'description' => preg_replace('/[^a-zA-Z0-9\s]/', '', strip_tags(html_entity_decode($subscription->item_name))),
                 'unit_cost' => number_format($subscription->recurring_amount / 100, 2, '.', ''),
@@ -371,11 +382,22 @@ class MonerisProcessor
             $cart['items'][] = $item;
             $cart['subtotal'] = number_format($subtotal + $subscription->recurring_amount / 100, 2, '.', '');
         }
-        
         return $cart;   
     }
 
-    public function maybeHasSubscription($originalArgs, $submission, $form_data, $paymentMode, $hasSubscriptions, $hasLineItems = false, $currency = 'USD')
+    public function maybeHasDiscounts($submission, $discountItems, $form_data, &$originalArgs, $totalPayable)
+    {
+        if (count($discountItems) > 0) {
+            $discountTotal = 0;
+            foreach ($discountItems as $discountItem) {
+                $discountTotal += intval($discountItem->line_total);
+            }
+            $afterDiscounts = $totalPayable - $discountTotal;
+            $originalArgs['txn_total'] = number_format($discountTotal / 100, 2, '.', '');
+        }
+    }
+
+    public function maybeHasSubscription($originalArgs, $submission, $form_data, $paymentMode, $hasSubscriptions, $discountItems, $hasLineItems = false, $currency = 'USD')
     {
         if (!$hasSubscriptions) {
             return $originalArgs;
@@ -386,6 +408,17 @@ class MonerisProcessor
         // dd($subscription);
         if (!$subscription->recurring_amount) {
             return $originalArgs;
+        }
+       
+        if (count($discountItems) > 0) {
+            wp_send_json_error(array(
+                'message' => 'Moneris payment method does not support discounts with subscriptions/recurring payments',
+                'payment_error' => true,
+                'type' => 'error',
+                'form_events' => [
+                    'payment_failed'
+                ]
+            ), 423);
         }
 
         if (!$hasLineItems) {
@@ -519,7 +552,7 @@ class MonerisProcessor
             }
         }
 
-        if (!$validSubscriptions || count($validSubscriptions) > 1) {
+        if ($validSubscriptions && count($validSubscriptions) > 1) {
             wp_send_json_error(array(
                 'message' => 'Moneris payment method does not support more than 1 subscriptions',
                 'payment_error' => true,
