@@ -100,6 +100,15 @@ class MonerisSettings extends BasePaymentMethod
                 'value' => '<p>See our <a href="https://paymattic.com/docs/how-to-integrate-moneris-in-wordpress-with-paymattic/" target="_blank" rel="noopener">documentation</a> to get more information about moneris setup.</p>',
                 'type' => 'html_attr',
             ),
+            'update_available' => array(
+                'value' => array(
+                    'available' => 'no',
+                    'url' => '',
+                    'slug' => 'moneris-payment-for-paymattic'
+                ),
+                'type' => 'update_check',
+                'label' => __('Update to new version avaiable', 'moneris-payment-for-paymattic'),
+            )
         );
     }
 
@@ -126,6 +135,11 @@ class MonerisSettings extends BasePaymentMethod
     }
 
   
+    /**
+     * @param $slug
+     * check for update availability
+     * @return array
+     */
     public static function checkForUpdate($slug)
     {
         $githubApi = "https://api.github.com/repos/WPManageNinja/{$slug}/releases";
@@ -204,9 +218,10 @@ class MonerisSettings extends BasePaymentMethod
             'live_store_id' => '',
             'live_api_token' => '',
             'live_checkout_id' => '',
-            'payment_channels' => []
+            'payment_channels' => [],
         ];
-        return wp_parse_args($settings, $defaults);
+
+        return wp_parse_args($settings, static::settingsKeys());
     }
 
     public function mapperSettings ($settings)
