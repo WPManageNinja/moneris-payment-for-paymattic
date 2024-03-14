@@ -257,7 +257,6 @@ class MonerisProcessor
 
         if ($hasLineItems) {
             $preloadRequestArgs['txn_total'] = number_format($transaction->payment_total / 100, 2, '.', ''); 
-            $this->maybeHasDiscounts($submission, $discountItems, $form_data, $preloadRequestArgs, $transaction->payment_total);  
             $this->maybeHasDiscountsWithDonationItems( $submission, $discountItems, $lineItems);  
         }
        
@@ -634,7 +633,6 @@ class MonerisProcessor
             return; // this isn't a moneris standard IPN
         }
 
-        // dd($vendorTransaction);
         $status = 'paid';
         $paymentTotal = intval($vendorTransaction['amount'] * 100);
         $currency = $transaction->currency;
