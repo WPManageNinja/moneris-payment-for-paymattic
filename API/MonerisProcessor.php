@@ -86,9 +86,7 @@ class MonerisProcessor
         } else {
             wp_enqueue_script('moneris', 'https://gatewayt.moneris.com/chktv2/js/chkt_v2.00.js', ['jquery'], WPPAYFORM_VERSION);
         }
-
         wp_enqueue_script('wppayform_moneris_handler', WPPAYFORM_URL . 'assets/js/moneris-handler.js', ['jquery'], WPPAYFORM_VERSION);
-        
     }
 
     public function startCheckout($transaction, $submission, $form, $form_data, $paymentMode, $hasSubscriptions, $totalPayable)
@@ -136,6 +134,7 @@ class MonerisProcessor
 
         $ticket = $response['ticket'];
         if (!$ticket) {
+            do_action('wppayform/form_payment_failed', $submission, $submission->form_id, $transaction, 'moneris');
             wp_send_json([
                 'errors'      => __('Moneris payment method failed to initiate', 'wp-payment-form-pro')
             ], 423);
@@ -197,21 +196,27 @@ class MonerisProcessor
     {
         $requireBillingAddress = Arr::get($form_data, '__payment_require_billing_address') == 'yes';
         $paymentMode = $this->getPaymentMode($submission->form_id);
-
         if ($requireBillingAddress) {
             if (empty($formDataFormatted['address_input'])) {
                 return [
                     'response' => array(
                         'success' => 'false',
-                        'error' => __('Billing Address is required for Moneris payment', 'wp-payment-form-pro')
+                        'error' => __('Billing Address is required.', 'wp-payment-form-pro')
                     )
                 ];
             }
             $address = explode(',', $formDataFormatted['address_input']);
         }
 
-        $country = $address[5] ?? '';
-        if ($requireBillingAddress && (' Canada' != $country && ' United States (US)' != $country)) {
+        $hasAddress = isset($formDataFormatted['address_input']);
+
+        if ($hasAddress && !$address) {
+            $address = explode(',', $formDataFormatted['address_input']);
+        }
+
+        $country = trim($address[5]) ?? '';
+
+        if (($requireBillingAddress || $hasAddress) && ('Canada' != $country && 'United States (US)' != $country)) {
             return [
                 'response' => array(
                     'success' => 'false',
@@ -256,25 +261,23 @@ class MonerisProcessor
         }
        
         $preloadRequestArgs = $this->maybeHasSubscription($preloadRequestArgs,$submission, $form_data, $paymentMode, $hasSubscriptions, $discountItems, $hasLineItems, $currency);
- 
 
         $preloadRequestArgs['currency'] = $currency;
         $preloadRequestArgs['language'] = 'en';
         $preloadRequestArgs['environment'] = $paymentMode == 'live' ? 'prod' : 'qa';
         $preloadRequestArgs['action'] = 'preload';
-
-        if ($requireBillingAddress && $address) {
+        if ($requireBillingAddress || $hasAddress) {
             $preloadRequestArgs['billing_details'] = [
-                'address_1' => $address[0] ?? '',
-                'address_2' => $address[1] ?? '',
-                'city' => $address[2] ?? '',
-                'province' => $address[3] ?? '',
-                'country' => $address[5] ?? '',
-                'postal_code' => 'M1M1M1',
+                'address_1' => trim($address[0]) ?? '',
+                'address_2' => trim($address[1]) ?? '',
+                'city' => trim($address[2]) ?? '',
+                'province' => trim($address[3]) ?? '',
+                'country' => $country,
+                'postal_code' => trim($address[4]) ?? '',
             ];
         }
 
-        $cart = $this->getCartSummary($preloadRequestArgs, $transaction, $submission, $form_data, $lineItems, $hasSubscriptions, $discountItems);
+        $cart = $this->getCartSummary($preloadRequestArgs, $submission, $form_data, $lineItems, $hasSubscriptions, $discountItems);
 
         $preloadRequestArgs['cart'] = $cart;
 
@@ -292,18 +295,17 @@ class MonerisProcessor
                 ), 423);
             }
         }
-
+        
         $api = new API();
         return $api->makeApiCall('', $preloadRequestArgs, $form_data['form_id'], 'POST');
     }
 
-    public function getCartSummary($transaction, $submission, $formData, $form_data, $items, $hasSubscriptions = false, $discountItems = [])
+    public function getCartSummary($preloadRequestArgs, $submission, $form_data, $items, $hasSubscriptions = false, $discountItems = [])
     {
         $subtotal = 0;
         $cart = array(
             'items' => [],
         );
-
         if ($items) {
             $counter = 1;
             $taxTotal = 0;
@@ -352,7 +354,6 @@ class MonerisProcessor
                     'description' =>  $description,
                 );
             }
-
             // add discounts as item to the cart for user clearification
             if (count($discountItems) > 0) {
                 foreach ($discountItems as $discountItem) {
@@ -378,7 +379,6 @@ class MonerisProcessor
                 'product_code' => (string) $subscription->id,
                 'quantity' => '1',
             );
-
             $cart['items'][] = $item;
             $cart['subtotal'] = number_format($subtotal + $subscription->recurring_amount / 100, 2, '.', '');
         }
@@ -694,6 +694,7 @@ class MonerisProcessor
         $api = new API();
         $response = $api->makeApiCall('', $receiptRequestArgs, $formId, 'POST')['response'];
         if ($response['success'] === 'false') {
+            do_action('wppayform/form_payment_failed', $submission, $submission->form_id, $transaction, 'moneris');
             wp_send_json_error(array(
                 'message' => $response['error'],
                 'payment_error' => true,
