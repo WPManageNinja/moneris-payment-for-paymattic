@@ -258,6 +258,7 @@ class MonerisProcessor
         if ($hasLineItems) {
             $preloadRequestArgs['txn_total'] = number_format($transaction->payment_total / 100, 2, '.', ''); 
             $this->maybeHasDiscounts($submission, $discountItems, $form_data, $preloadRequestArgs, $transaction->payment_total);  
+            $this->maybeHasDiscountsWithDonationItems( $submission, $discountItems, $lineItems);  
         }
        
         $preloadRequestArgs = $this->maybeHasSubscription($preloadRequestArgs,$submission, $form_data, $paymentMode, $hasSubscriptions, $discountItems, $hasLineItems, $currency);
@@ -282,7 +283,7 @@ class MonerisProcessor
         $preloadRequestArgs['cart'] = $cart;
 
         $preloadRequestArgs = apply_filters('wppayform/moneris_payment_args', $preloadRequestArgs, $submission, $form_data, $transaction, $hasSubscriptions);
-
+ 
         if ($preloadRequestArgs['txn_total'] < 10) {
             if ($preloadRequestArgs['txn_total'] < 10 && $preloadRequestArgs['txn_total'] != floor($preloadRequestArgs['txn_total'])) {
                 wp_send_json_error(array(
@@ -295,7 +296,7 @@ class MonerisProcessor
                 ), 423);
             }
         }
-        
+
         $api = new API();
         return $api->makeApiCall('', $preloadRequestArgs, $form_data['form_id'], 'POST');
     }
@@ -363,6 +364,7 @@ class MonerisProcessor
                         'product_code' => (string) $discountItem->id,
                         'quantity' => '1',
                     );
+                    $subtotal -= $discountItem->line_total / 100;
                     $cart['items'][] = $item;
                 }
             }
@@ -385,15 +387,26 @@ class MonerisProcessor
         return $cart;   
     }
 
-    public function maybeHasDiscounts($submission, $discountItems, $form_data, &$originalArgs, $totalPayable)
+    public function maybeHasDiscountsWithDonationItems($submission, $discountItems, $lineItems)
     {
         if (count($discountItems) > 0) {
+            // check for donation item
+            foreach ($lineItems as $lineItem) {
+                if ($lineItem->parent_holder == 'donation_item') {
+                    wp_send_json_error(array(
+                        'message' => 'Do not use discount with donation item',
+                        'payment_error' => true,
+                        'type' => 'error',
+                        'form_events' => [
+                            'payment_failed'
+                        ]
+                    ), 423);
+                }
+            }
             $discountTotal = 0;
             foreach ($discountItems as $discountItem) {
                 $discountTotal += intval($discountItem->line_total);
             }
-            $afterDiscounts = $totalPayable - $discountTotal;
-            $originalArgs['txn_total'] = number_format($discountTotal / 100, 2, '.', '');
         }
     }
 
@@ -580,11 +593,19 @@ class MonerisProcessor
     public function addTransactionUrl($transactions, $submissionId)
     {
       
-        foreach ($transactions as $transaction) {
-            if ($transaction->charge_id) {
+        if (count($transactions) > 0) {
+            foreach ($transactions as $transaction) {
+                if ($transaction->charge_id) {
+                    $paymentNote = maybe_unserialize($transaction->payment_note);
+                    $transaction->transaction_url =  'https://esqa.moneris.com/mpg/reports/order_history/index.php?order_no='.  $transaction->charge_id . '&orig_txn_no='.$paymentNote['transaction_no'];
+                }
+            }
+        } else {
+            $transaction = $this->getLastTransaction($submissionId);
+            if ($transaction && $transaction->charge_id) {
                 $paymentNote = maybe_unserialize($transaction->payment_note);
-                // dd($paymentNote);
                 $transaction->transaction_url =  'https://esqa.moneris.com/mpg/reports/order_history/index.php?order_no='.  $transaction->charge_id . '&orig_txn_no='.$paymentNote['transaction_no'];
+                $transactions[] = $transaction;
             }
         }
         return $transactions;
@@ -686,7 +707,7 @@ class MonerisProcessor
         $receiptRequestArgs['ticket'] = $ticket;
         $receiptRequestArgs['environment'] = (new \MonerisPaymentForPaymattic\Settings\MonerisSettings())::isLive($formId) ? 'prod' : 'qa';
         $receiptRequestArgs['action'] = 'receipt';
-        // dd($receiptRequestArgs, '...receiptRequestArgs');
+        
         $submission = (new Submission())->getSubmission($submissionId);
         $transaction = (new Transaction())->getTransaction($transactionId);
 
