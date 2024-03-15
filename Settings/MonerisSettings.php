@@ -130,7 +130,7 @@ class MonerisSettings extends BasePaymentMethod
             'live_api_token' => '',
             'live_checkout_id' => '',
             'payment_channels' => [],
-            'update_available' => self::checkForUpdate($slug),
+            'update_available' => static::checkForUpdate($slug),
         );
     }
 
@@ -143,12 +143,12 @@ class MonerisSettings extends BasePaymentMethod
     public static function checkForUpdate($slug)
     {
         $githubApi = "https://api.github.com/repos/WPManageNinja/{$slug}/releases";
-        return $result = array(
+
+        $result = array(
             'available' => 'no',
             'url' => '',
             'slug' => 'moneris-payment-for-paymattic'
         );
-
         $response = wp_remote_get($githubApi, 
         [
             'headers' => array('Accept' => 'application/json',
@@ -208,6 +208,8 @@ class MonerisSettings extends BasePaymentMethod
     public static function getSettings()
     {
         $settings = get_option('wppayform_payment_settings_moneris', array());
+        $settings = wp_parse_args($settings, static::settingsKeys());
+
         $defaults = [
             'is_active' => 'no',
             'payment_mode' => 'test',
@@ -220,8 +222,7 @@ class MonerisSettings extends BasePaymentMethod
             'live_checkout_id' => '',
             'payment_channels' => [],
         ];
-
-        return wp_parse_args($settings, static::settingsKeys());
+        return wp_parse_args($settings, $defaults);
     }
 
     public function mapperSettings ($settings)
@@ -259,15 +260,15 @@ class MonerisSettings extends BasePaymentMethod
 
     public static function isLive($formId = false)
     {
-        $settings = self::getSettings();
+        $settings = static::getSettings();
         $mode = Arr::get($settings, 'payment_mode');
         return $mode == 'live';
     }
 
     public static function getApiKeys($formId = false)
     {
-        $isLive = self::isLive($formId);
-        $settings = self::getSettings();
+        $isLive = static::isLive($formId);
+        $settings = static::getSettings();
         if ($isLive) {
             return array(
                 'store_id' => Arr::get($settings, 'live_store_id'),
