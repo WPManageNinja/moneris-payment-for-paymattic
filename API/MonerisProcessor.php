@@ -11,9 +11,6 @@ use WPPayForm\App\Models\Transaction;
 use WPPayForm\App\Models\OrderItem;
 use WPPayForm\App\Models\Subscription;
 use WPPayForm\App\Models\Submission;
-use WPPayForm\App\Services\GeneralSettings;
-use WPPayForm\App\Models\Form;
-use WPPayForm\App\Services\PlaceholderParser;
 use WPPayForm\App\Services\ConfirmationHelper;
 
 // can't use namespace as these files are not accessible yet.. we are not using autoload
@@ -142,7 +139,7 @@ class MonerisProcessor
 
         if ($ticket && !$transaction) {
             $subscription = $this->getValidSubscription($submission);
-            $amount = number_format($subscription->recurring_amount / 100, 2, '.', '') ?? '0.00';
+            $amount = number_format($subscription->initial_amount / 100, 2, '.', '') ?? '1.00';
         }
 
         $checkoutData = [
@@ -295,7 +292,6 @@ class MonerisProcessor
                 ), 423);
             }
         }
-
         $api = new API();
         return $api->makeApiCall('', $preloadRequestArgs, $form_data['form_id'], 'POST');
     }
@@ -306,7 +302,7 @@ class MonerisProcessor
         $cart = array(
             'items' => [],
         );
-        if ($items) {
+        if (count($items) > 0) {
             $counter = 1;
             $taxTotal = 0;
             $taxItemCounter = 0;
@@ -328,7 +324,6 @@ class MonerisProcessor
                         return ' '. number_format($tax, 2, '.', '');
                     }, strip_tags(html_entity_decode($temp)));
 
-                    // dd($tempDescription, $tax, $temp);
                     $taxTotal += intval($item->line_total);
                     if ($taxItemCounter > 0) {
                         $description .= ' '. $tempDescription;
@@ -381,7 +376,10 @@ class MonerisProcessor
                 'quantity' => '1',
             );
             $cart['items'][] = $item;
-            $cart['subtotal'] = number_format($subtotal + $subscription->recurring_amount / 100, 2, '.', '');
+            if (count($items) == 0) {
+                $subtotal = 0;
+                $cart['subtotal'] = $subscription['initial_amount'] ? number_format($subscription['initial_amount'] / 100 , 2, '.', '') : '1.00'; // minimum amount to process the transaction 
+            }
         }
         return $cart;   
     }
@@ -417,7 +415,7 @@ class MonerisProcessor
 
         // We just need the first subscriptipn
         $subscription = $this->getValidSubscription($submission);
-        // dd($subscription);
+
         if (!$subscription->recurring_amount) {
             return $originalArgs;
         }
@@ -433,28 +431,36 @@ class MonerisProcessor
             ), 423);
         }
 
+        $initialAmount = $subscription['initial_amount'];
+
         if (!$hasLineItems) {
+            $paymentTotal = 100;
+
+            if ($initialAmount > 0) {
+                $paymentTotal = $initialAmount;
+            }
+
             $currentUserId = get_current_user_id();
             $transaction = array(
                 'form_id'        => $submission->form_id,
                 'user_id'        => $currentUserId,
                 'submission_id'  => $submission->id,
+                'subscription_id' => $subscription->id,
                 'charge_id'      => '',
                 'transaction_type' => 'subscription',
                 'payment_method' => 'moneris',
-                'payment_total'  => '0',
+                'payment_total'  => $paymentTotal,
                 'currency'       => $currency,
                 'status'         => 'pending',
                 'created_at'     => current_time('mysql'),
                 'updated_at'     => current_time('mysql'),
             );
-
             $transaction = apply_filters('wppayform/submission_transaction_data', $transaction, $submission->form_id, $form_data);
             $transactionModel = new Transaction();
             $transactionId = $transactionModel->createTransaction($transaction)->id;
             do_action('wppayform/after_transaction_data_insert', $transactionId, $transaction);
 
-            $originalArgs['txn_total'] = number_format($subscription->recurring_amount / 100, 2, '.', '');
+            $originalArgs['txn_total'] = number_format((float)$paymentTotal / 100, 2, '.', ''); // minimum amount to process the transaction
         }
 
         // Unit to be used as a basis for the interval. Works in conjunction with the period variable to define the billing frequency.
@@ -480,10 +486,10 @@ class MonerisProcessor
         $addDays = 0;
         // Free trial period in days
         $trialPeriod = intval($subscription['trial_days']);
-        $initialAmount = $subscription['initial_amount'];
-        if ('0' != $initialAmount) {
+       
+        if ('0' != $initialAmount && $hasLineItems) {
             wp_send_json_error(array(
-                'message' => "Moneris doesn't support initial amount, You can disable trial days or set it to 0, it will be charged the subscription amount as signup fee.",
+                'message' => "Moneris doesn't support initial amount/signup fee with One time payment, You can disable trial days or set it to 0, it will be charged the subscription amount as signup fee.",
                 'payment_error' => true,
                 'type' => 'error',
                 'form_events' => [
@@ -546,8 +552,6 @@ class MonerisProcessor
             'number_of_recurs' => $numberOfRecurs,
 
         );
-
-        // dd($originalArgs);
 
         return $originalArgs;
     }
@@ -782,9 +786,15 @@ class MonerisProcessor
     {
         // We just need the first subscriptipn
         $subscription = $this->getValidSubscription($submission);
-    
+       
         $data['status'] = 'active';
         $data['vendor_subscriptipn_id'] = $vendorPayment['order_no'];
+       
+        if (!$transaction) {
+            $data['payment_total'] = ($subscription->initial_amount) > 0 ? $subscription->initial_amount : '100';
+            $data['initial_amount'] = ($subscription->initial_amount) > 0 ?$subscription->initial_amount :  '100';
+        }
+
         $subscriptionModel = new Subscription();
 
         $subscriptionModel->updateSubscription($subscription['id'], $data);
@@ -807,7 +817,7 @@ class MonerisProcessor
             $subscriptionTypeTransaction = Transaction::where('submission_id', $submission->id)
                 ->where('transaction_type', 'subscription')
                 ->first();
-            // Its a subscription only transaction where the payment is made 0 , but wee need to make it paid to avoid the confusion
+            // Its a subscription only transaction where the payment is made 1.00 as moneris dosen't allow 0 dollar transaction
             $status = 'paid';
             $currency = $transaction->currency;
             $cardFist6Last4 = $vendorPayment['first6last4'];
@@ -820,6 +830,7 @@ class MonerisProcessor
             // update submission status to remove confusion as it is just a subscription signup not a payment
             $submissionData = array(
                 'payment_status' => $status,
+                'payment_total' => ($subscription->initial_amount) > 0 ? $subscription->initial_amount : '100',
                 'updated_at' => current_time('Y-m-d H:i:s')
             );
     
@@ -827,13 +838,13 @@ class MonerisProcessor
             $submissionModel->updateSubmission($submission->id, array(
                 'payment_status' => 'paid'
             ));
-    
+
             // now transaction related to the subscription but be sure it's not a subscription invoice or direct payment
             $updateData = [
                 'status' => $status,
                 'payment_note'     => maybe_serialize($vendorPayment),
                 'charge_id'        => sanitize_text_field(Arr::get($vendorPayment, 'order_no')),
-                'payment_total' => 0,
+                'payment_total' => ($subscription->initial_amount) > 0 ? $subscription->initial_amount : '100',
                 'currency'      => $currency,
                 'card_brand' => sanitize_text_field($cardType),
                 'card_last_4' => intval($lastFour),
@@ -841,6 +852,9 @@ class MonerisProcessor
 
             $transactionModel = new Transaction();
             $transactionModel->updateTransaction($subscriptionTypeTransaction->id, $updateData);
+
+            // update trnsaction related submission also
+            $submissionModel->updateSubmission($subscriptionTypeTransaction->submission_id, $submissionData);
             
             $confirmation = ConfirmationHelper::getFormConfirmation($submission->form_id, $submission);
             $returnData['payment'] = $vendorPayment;
