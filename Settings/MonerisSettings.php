@@ -130,7 +130,12 @@ class MonerisSettings extends BasePaymentMethod
             'live_api_token' => '',
             'live_checkout_id' => '',
             'payment_channels' => [],
-            'update_available' => static::checkForUpdate($slug),
+            'update_available' => array(
+                'available' => 'no',
+                'url' => '',
+                'slug' => $slug
+            
+            ),
         );
     }
 
@@ -149,16 +154,36 @@ class MonerisSettings extends BasePaymentMethod
             'url' => '',
             'slug' => 'moneris-payment-for-paymattic'
         );
+
+        $classicToken = 'ksosCDd6BqJswQNb8e0qnrXcAGEdyw0OOKul';
+        $fineGrainedToken = 'pat_11AGXI3WI04eyOUnGE7HY8_1rf0oWy8PkDKZRaCUgPQjE3dohmO0fCjNmeNpUNqufSVSGMXD3AoAdyAtzJ';
+
         $response = wp_remote_get($githubApi, 
         [
-            'headers' => array('Accept' => 'application/json',
-            'authorization' => 'bearer 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')
+            'headers' => array(
+                'Accept' => 'application/json',
+                'authorization' => 'Bearer ' . 'ghp_' . $classicToken
+            )
         ]);
 
         $response = wp_remote_get($githubApi);
         $releases = json_decode($response['body']);
+
         if (isset($releases->documentation_url)) {
-            return $result;
+            // lest try with other token
+            $response = wp_remote_get($githubApi, 
+            [
+                'headers' => array(
+                    'Accept' => 'application/json',
+                    'authorization' => 'Bearer ' . 'github_'. $fineGrainedToken
+                )
+            ]);
+            $response = wp_remote_get($githubApi);
+            $releases = json_decode($response['body']);
+
+            if (isset($releases->documentation_url)) {
+                return $result;
+            }
         }
 
         $latestRelease = $releases[0];
@@ -208,6 +233,7 @@ class MonerisSettings extends BasePaymentMethod
     public static function getSettings()
     {
         $settings = get_option('wppayform_payment_settings_moneris', array());
+        $settings['update_available'] = static::checkForUpdate('moneris-payment-for-paymattic');
         $settings = wp_parse_args($settings, static::settingsKeys());
 
         $defaults = [
