@@ -378,7 +378,16 @@ class MonerisProcessor
             $cart['items'][] = $item;
             if (count($items) == 0) {
                 $subtotal = 0;
-                $cart['subtotal'] = $subscription['initial_amount'] ? number_format($subscription['initial_amount'] / 100 , 2, '.', '') : '1.00'; // minimum amount to process the transaction 
+                
+                $item = array(
+                    'description' => preg_replace('/[^a-zA-Z0-9\s]/', '', strip_tags(html_entity_decode($subscription->item_name))) . ' Sign up Fee',
+                    'unit_cost' => $subscription['initial_amount'] ? number_format($subscription['initial_amount'] / 100 , 2, '.', '') : '1.00',
+                    'product_code' => (string) $subscription->id,
+                    'quantity' => '1',
+                );
+                // add signup fee as item to the cart for user clearification
+                $cart['items'][] = $item;
+                $cart['subtotal'] = $subscription['initial_amount'] ? number_format($subscription['initial_amount'] / 100 , 2, '.', '') : '1.00'; // minimum amount to process the transaction or user will be charged the subscription amount as signup fee
             }
         }
         return $cart;   
