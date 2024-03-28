@@ -155,33 +155,39 @@ class MonerisSettings extends BasePaymentMethod
             'slug' => 'moneris-payment-for-paymattic'
         );
 
-        $classicToken = 'ksosCDd6BqJswQNb8e0qnrXcAGEdyw0OOKul';
-        $fineGrainedToken = 'pat_11AGXI3WI04eyOUnGE7HY8_1rf0oWy8PkDKZRaCUgPQjE3dohmO0fCjNmeNpUNqufSVSGMXD3AoAdyAtzJ';
-
-        $response = wp_remote_get($githubApi, 
-        [
-            'headers' => array(
-                'Accept' => 'application/json',
-                'authorization' => 'Bearer ' . 'ghp_' . $classicToken
-            )
-        ]);
-
+        // lets try without token which is enough for a single person updateCheckup
         $response = wp_remote_get($githubApi);
         $releases = json_decode($response['body']);
 
+        // try with tokens we have
         if (isset($releases->documentation_url)) {
-            // lest try with other token
+            $classicToken = 'ksosCDd6BqJswQNb8e0qnrXcAGEdyw0OOKul';
+            $fineGrainedToken = 'pat_11AGXI3WI04eyOUnGE7HY8_1rf0oWy8PkDKZRaCUgPQjE3dohmO0fCjNmeNpUNqufSVSGMXD3AoAdyAtzJ';
+    
             $response = wp_remote_get($githubApi, 
             [
                 'headers' => array(
                     'Accept' => 'application/json',
-                    'authorization' => 'Bearer ' . 'github_'. $fineGrainedToken
+                    'authorization' => 'Bearer ' . 'ghp_' . $classicToken
                 )
             ]);
-            $response = wp_remote_get($githubApi);
+
             $releases = json_decode($response['body']);
+
             if (isset($releases->documentation_url)) {
-                return $result;
+                // lest try with other token
+                $response = wp_remote_get($githubApi, 
+                [
+                    'headers' => array(
+                        'Accept' => 'application/json',
+                        'authorization' => 'Bearer ' . 'github_'. $fineGrainedToken
+                    )
+                ]);
+    
+                $releases = json_decode($response['body']);
+                if (isset($releases->documentation_url)) {
+                    return $result;
+                }
             }
         }
 
