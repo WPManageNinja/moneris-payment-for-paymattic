@@ -32,14 +32,11 @@ class MonerisProcessor
 
         add_filter('wppayform/choose_payment_method_for_submission', array($this, 'choosePaymentMethod'), 10, 4);
         add_action('wppayform/form_submission_make_payment_' . $this->method, array($this, 'makeFormPayment'), 10, 6);
-        // add_filter('wppayform/moneris_payment_args', array($this, 'maybeHasSubscription'), 10, 5);
         add_action('wppayform_load_checkout_js_' . $this->method, array($this, 'addCheckoutJs'), 10, 3);
 
         add_action('wp_ajax_wppayform_moneris_confirm_payment', array($this, 'confirmPayment'));
         add_action('wp_ajax_nopriv_wppayform_moneris_confirm_payment', array($this, 'confirmPayment'));
         add_filter('wppayform/entry_transactions_' . $this->method, array($this, 'addTransactionUrl'), 10, 2);
-        // add_filter('wppayform/entry_transactions_stripe', array($this, 'addTransactionUrl'), 10, 2);
-        // add_filter('wppayform/submitted_payment_items_' . $this->method, array($this, 'validateSubscription'), 10, 4);
     }
 
     public function choosePaymentMethod($paymentMethod, $elements, $formId, $form_data)
@@ -91,7 +88,7 @@ class MonerisProcessor
         $currency = strtoupper($submission->currency);
         if (!in_array($currency, ['CAD', 'USD'])) {
             wp_send_json([
-                'errors'      => $currency . 'is not supported by Moneris payment method'
+                'errors'      => $currency . ' is not supported by Moneris payment method'
             ], 423);
         }
 
@@ -131,6 +128,23 @@ class MonerisProcessor
 
         $ticket = $response['ticket'];
         if (!$ticket) {
+            $submissionModel = new Submission();
+            $submission = $submissionModel->getSubmission($transaction->submission_id);
+            $submissionData = array(
+                'payment_status' => 'failed',
+                'updated_at' => current_time('Y-m-d H:i:s')
+            );
+            $submissionModel->where('id', $transaction->submission_id)->update($submissionData);
+
+            do_action('wppayform_log_data', [
+                'form_id' => $submission->form_id,
+                'submission_id' => $submission->id,
+                'type' => 'activity',
+                'created_by' => 'Paymattic BOT',
+                'title' => 'Moneris Modal is failed',
+                'content' => 'Moneris Modal is failed to initiate, please check the logs for more information.'
+            ]);
+
             do_action('wppayform/form_payment_failed', $submission, $submission->form_id, $transaction, 'moneris');
             wp_send_json([
                 'errors'      => __('Moneris payment method failed to initiate', 'wp-payment-form-pro')
@@ -141,6 +155,7 @@ class MonerisProcessor
             $subscription = $this->getValidSubscription($submission);
             $amount = number_format($subscription->initial_amount / 100, 2, '.', '') ?? '1.00';
         }
+
 
         $checkoutData = [
             'store_id' => $keys['store_id'],
@@ -182,7 +197,7 @@ class MonerisProcessor
             'submission_id'    => $submission->id,
             'checkout_data'       => $checkoutData,
             'transaction_hash' => $submission->submission_hash,
-            'message'          => __('You are redirecting to moneris checkout page to complete the purchase. Please wait while you are redirecting....', 'wp-payment-form-pro'),
+            'message'          => __('Moneris checkout page is loading. Please wait ....', 'wp-payment-form-pro'),
             'result'           => [
                 'insert_id' => $submission->id
             ]
@@ -292,6 +307,7 @@ class MonerisProcessor
                 ), 423);
             }
         }
+
         $api = new API();
         return $api->makeApiCall('', $preloadRequestArgs, $form_data['form_id'], 'POST');
     }
@@ -349,7 +365,7 @@ class MonerisProcessor
                     'description' =>  $description,
                 );
             }
-            // add discounts as item to the cart for user clearification
+            // add discounts as item to the cart for user clarification
             if (count($discountItems) > 0) {
                 foreach ($discountItems as $discountItem) {
                     $item = array(
@@ -367,7 +383,7 @@ class MonerisProcessor
         $cart['subtotal'] = number_format($subtotal, 2, '.', '');
 
         if ($hasSubscriptions) {
-            // We just need the first subscriptipn
+            // We just need the first subscription
             $subscription = $this->getValidSubscription($submission);
             $item = array(
                 'description' => preg_replace('/[^a-zA-Z0-9\s]/', '', strip_tags(html_entity_decode($subscription->item_name))),
@@ -385,7 +401,7 @@ class MonerisProcessor
                     'product_code' => (string) $subscription->id,
                     'quantity' => '1',
                 );
-                // add signup fee as item to the cart for user clearification
+                // add signup fee as item to the cart for user clarification
                 $cart['items'][] = $item;
                 $cart['subtotal'] = $subscription['initial_amount'] ? number_format($subscription['initial_amount'] / 100 , 2, '.', '') : '1.00'; // minimum amount to process the transaction or user will be charged the subscription amount as signup fee
             }
@@ -793,10 +809,11 @@ class MonerisProcessor
 
     public function processSubscriptionSignup($submission, $transaction, $vendorPayment)
     {
-        // We just need the first subscriptipn
+        // We just need the first subscription
         $subscription = $this->getValidSubscription($submission);
        
         $data['status'] = 'active';
+        // vendor_subscriptipn_id is intentionally mistaken as it is in the DB
         $data['vendor_subscriptipn_id'] = $vendorPayment['order_no'];
        
         if (!$transaction) {
@@ -826,7 +843,7 @@ class MonerisProcessor
             $subscriptionTypeTransaction = Transaction::where('submission_id', $submission->id)
                 ->where('transaction_type', 'subscription')
                 ->first();
-            // Its a subscription only transaction where the payment is made 1.00 as moneris dosen't allow 0 dollar transaction
+            // Its a subscription only transaction where the payment is made 1.00 as moneris dose not allow 0 dollar transaction
             $status = 'paid';
             $currency = $transaction->currency;
             $cardFist6Last4 = $vendorPayment['first6last4'];
@@ -836,7 +853,8 @@ class MonerisProcessor
                 $cardType = 'visa';
             }
 
-            // update submission status to remove confusion as it is just a subscription signup not a payment
+            // update submission status to remove confusion as it is just a subscription signup not a payment,
+            // we need to have at least 1.00 dollar transaction, which customer pay as subscription signup fee if there is no extra payment
             $submissionData = array(
                 'payment_status' => $status,
                 'payment_total' => ($subscription->initial_amount) > 0 ? $subscription->initial_amount : '100',
@@ -862,7 +880,7 @@ class MonerisProcessor
             $transactionModel = new Transaction();
             $transactionModel->updateTransaction($subscriptionTypeTransaction->id, $updateData);
 
-            // update trnsaction related submission also
+            // update transaction related submission also
             $submissionModel->updateSubmission($subscriptionTypeTransaction->submission_id, $submissionData);
             
             $confirmation = ConfirmationHelper::getFormConfirmation($submission->form_id, $submission);

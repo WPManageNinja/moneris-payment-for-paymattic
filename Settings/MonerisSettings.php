@@ -159,7 +159,7 @@ class MonerisSettings extends BasePaymentMethod
         $response = wp_remote_get($githubApi);
         $releases = json_decode($response['body']);
 
-        // try with tokens we have
+        // try with tokens we have in development
         if (isset($releases->documentation_url)) {
             // $classicToken = 'ksosCDd6BqJswQNb8e0qnrXcAGEdyw0OOKul';
             // $fineGrainedToken = 'pat_11AGXI3WI04eyOUnGE7HY8_1rf0oWy8PkDKZRaCUgPQjE3dohmO0fCjNmeNpUNqufSVSGMXD3AoAdyAtzJ';
