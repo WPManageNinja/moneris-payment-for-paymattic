@@ -70,7 +70,7 @@ if (!class_exists('MonerisPaymentForPaymattic')) {
             $currentFreeVersion = WPPAYFORM_VERSION;
             $currentProVersion = WPPAYFORMPRO_VERSION;
 
-            return version_compare($currentFreeVersion, '4.5.0', '>=') && version_compare($currentProVersion, '4.5.0', '>=');
+            return version_compare($currentFreeVersion, '4.5.2', '>=') && version_compare($currentProVersion, '4.5.2', '>=');
         }
 
         public function renderNotice()
