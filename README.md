@@ -1,4 +1,5 @@
 === Moneris Payment for Paymattic ===
+
 Contributors: hasanuzzamanshamim, wpmanageninja, akmelias
 Tags: payment form, donations, recurring-payments, payments, moneris, Canada, USA region Payments
 Requires at least: 4.5.2
@@ -11,6 +12,7 @@ License URI: https://www.gnu.org/licenses/gpl-2.0.html
 Accept simple payments and donations with Moneris payment using Paymattic.
 
 == Description ==
+
 Moneris payment for Paymattic is a supplementary add-on for Paymattic to integrate Moneris payment gateway on your website. If you want to receive payments on your website with the Moneris payment gateway, install the Paymattic plugin and activate the Moneris module. Paymattic will automatically install this add-on for Paymattic.
 Moneris is a popular payment gateway based in Canda and USA.
 
