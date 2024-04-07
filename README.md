@@ -2,7 +2,7 @@
 Contributors: hasanuzzamanshamim, wpmanageninja, akmelias
 Tags: payment form, donations, recurring-payments, payments, moneris, Canada, USA region Payments
 Requires at least: 4.5.2
-Tested up to: 6.3.4
+Tested up to: 6.5
 Stable tag: 1.0.0
 Requires PHP: 7.1
 License: GPLv2 or later
