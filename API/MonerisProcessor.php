@@ -11,6 +11,7 @@ use WPPayForm\App\Models\Transaction;
 use WPPayForm\App\Models\OrderItem;
 use WPPayForm\App\Models\Subscription;
 use WPPayForm\App\Models\Submission;
+use WPPayForm\App\Services\CountryNames;
 use WPPayForm\App\Services\ConfirmationHelper;
 
 // can't use namespace as these files are not accessible yet.. we are not using autoload
@@ -28,7 +29,7 @@ class MonerisProcessor
     {
         new  \MonerisPaymentForPaymattic\Settings\MonerisElement();
         (new  \MonerisPaymentForPaymattic\Settings\MonerisSettings())->init();
-        (new \MonerisPaymentForPaymattic\API\API())->init();
+        (new API())->init();
 
         add_filter('wppayform/choose_payment_method_for_submission', array($this, 'choosePaymentMethod'), 10, 4);
         add_action('wppayform/form_submission_make_payment_' . $this->method, array($this, 'makeFormPayment'), 10, 6);
@@ -226,22 +227,17 @@ class MonerisProcessor
             $address = explode(',', $formDataFormatted['address_input']);
         }
 
-        $country = trim($address[5]) ?? '';
+        $country = CountryNames::getCountryCode(trim($address[5])) ?? '';
 
-        if (($requireBillingAddress || $hasAddress) && ('Canada' != $country && 'United States (US)' != $country)) {
-            return [
-                'response' => array(
-                    'success' => 'false',
-                    'error' => __('Moneris payment only supports Canada and United States', 'wp-payment-form-pro')
-                )
-            ];
-        }
 
-        if (' Canada' == $country) {
-            $country = 'CA';
-        } elseif (' United States (US)' == $country) {
-            $country = 'US';
-        }
+        // if (($requireBillingAddress || $hasAddress) && ('Canada' != $country && 'United States (US)' != $country)) {
+        //     return [
+        //         'response' => array(
+        //             'success' => 'false',
+        //             'error' => __('Moneris payment only supports Canada and United States', 'wp-payment-form-pro')
+        //         )
+        //     ];
+        // }
 
         // make preloadRequestARgs
         $preloadRequestArgs = [];
