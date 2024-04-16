@@ -97,7 +97,7 @@ class MonerisSettings extends BasePaymentMethod
                 'label' => __('PayPal', 'wp-payment-form'),
             ),
             'desc' => array(
-                'value' => '<p>See our <a href="https://paymattic.com/docs/how-to-integrate-moneris-in-wordpress-with-paymattic/" target="_blank" rel="noopener">documentation</a> to get more information about moneris setup.</p>',
+                'value' => '<p>See our <a href="https://paymattic.com/docs/how-to-integrate-moneris-payment-gateway-in-paymattic/" target="_blank" rel="noopener">documentation</a> to get more information about moneris setup.</p>',
                 'type' => 'html_attr',
             ),
             'update_available' => array(
