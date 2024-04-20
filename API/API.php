@@ -133,21 +133,27 @@ class API
             $endPoint = 'https://gateway.moneris.com/chktv2/request/request.php';
         }
 
+        $endPoint = $endPoint . $path;
         if ($method == 'POST') {
-            $response = wp_remote_post(`$endPoint . $path`, [
+            $response = wp_remote_post($endPoint, [
                 'headers' => $headers,
                 'body'    => json_encode($args)
             
             ]);
         } else {
-            $response = wp_remote_request(`$endPoint . $path`, [
+            $response = wp_remote_request($endPoint, [
                 'headers' => $headers,
                 'body'    => $args
             ]);
         }
 
         if (is_wp_error($response)) {
-            return $response;
+            return [
+                'response' => array(
+                    'success' => 'false',
+                    'error' => $response->get_error_message()
+                )
+            ];;
         }
 
         $body = wp_remote_retrieve_body($response);

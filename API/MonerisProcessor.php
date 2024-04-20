@@ -152,11 +152,13 @@ class MonerisProcessor
             ], 423);
         }
 
+
         if ($ticket && !$transaction) {
             $subscription = $this->getValidSubscription($submission);
             $amount = number_format($subscription->initial_amount / 100, 2, '.', '') ?? '1.00';
+        } else {
+            $amount = number_format($transaction->payment_total / 100, 2, '.', '');
         }
-
 
         $checkoutData = [
             'store_id' => $keys['store_id'],
@@ -165,7 +167,7 @@ class MonerisProcessor
             'ticket' => $ticket,
             'environment' => $paymentMode == 'live' ? 'prod' : 'qa',
             'action' => 'receipt',
-            'email'    => $submission->customer_email,
+            'email'    => $submission->customer_email ? $submission->customer_email : 'moneris@example.com',
             'ref'      => $submission->submission_hash,
             'amount'   => $amount,
             'currency' => $currency, //
@@ -209,6 +211,8 @@ class MonerisProcessor
     {
         $requireBillingAddress = Arr::get($form_data, '__payment_require_billing_address') == 'yes';
         $paymentMode = $this->getPaymentMode($submission->form_id);
+        $address = '';
+
         if ($requireBillingAddress) {
             if (empty($formDataFormatted['address_input'])) {
                 return [
@@ -305,7 +309,7 @@ class MonerisProcessor
         }
 
         $api = new API();
-        return $api->makeApiCall('', $preloadRequestArgs, $form_data['form_id'], 'POST');
+        return $api->makeApiCall('', $preloadRequestArgs, $submission->form_id, 'POST');
     }
 
     public function getCartSummary($preloadRequestArgs, $submission, $form_data, $items, $hasSubscriptions = false, $discountItems = [])
@@ -554,7 +558,7 @@ class MonerisProcessor
         $numberOfRecurs = $subscription['bill_times'];
         if (!$numberOfRecurs || '0' === $numberOfRecurs || 'unlimited' === $numberOfRecurs) {
             wp_send_json_error(array(
-                'message' => "Provide a valid number of Billing times(By default it sets to 0 - which indicate unlimited),  Moneris doesn't support unlimited Billings",
+                'message' => "Provide a valid number of Billing times(By default it sets to 0 on Subscription item settings - which indicate unlimited),  Moneris doesn't support unlimited Billings",
                 'payment_error' => true,
                 'type' => 'error',
                 'form_events' => [
