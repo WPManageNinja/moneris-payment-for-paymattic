@@ -134,7 +134,7 @@ class API
         }
 
         if ($method == 'POST') {
-            $response = wp_remote_post($endPoint, [
+            $response = wp_remote_post(`$endPoint . $path`, [
                 'headers' => $headers,
                 'body'    => json_encode($args)
             
