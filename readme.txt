@@ -1,5 +1,5 @@
 === Moneris Payment for Paymattic ===
-Contributors: wpmanageninja, hasanuzzamanshamim, akmelias
+Contributors: wpmanageninja, akmelias, hasanuzzamanshamim
 Tags: payment form, donations, recurring-payments, payments, moneris, Canada, USA region Payments
 Requires at least: 4.5.2
 Tested up to: 6.5

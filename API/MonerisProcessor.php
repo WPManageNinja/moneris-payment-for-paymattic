@@ -554,7 +554,7 @@ class MonerisProcessor
         $numberOfRecurs = $subscription['bill_times'];
         if (!$numberOfRecurs || '0' === $numberOfRecurs || 'unlimited' === $numberOfRecurs) {
             wp_send_json_error(array(
-                'message' => "Provide a valid number of Billing times,  Moneris doesn't support unlimited Billings",
+                'message' => "Provide a valid number of Billing times(By default it sets to 0 - which indicate unlimited),  Moneris doesn't support unlimited Billings",
                 'payment_error' => true,
                 'type' => 'error',
                 'form_events' => [

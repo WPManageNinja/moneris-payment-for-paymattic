@@ -134,7 +134,7 @@ class API
         }
 
         if ($method == 'POST') {
-            $response = wp_remote_post('https://gatewayt.moneris.com/chktv2/request/request.php', [
+            $response = wp_remote_post($endPoint, [
                 'headers' => $headers,
                 'body'    => json_encode($args)
             
