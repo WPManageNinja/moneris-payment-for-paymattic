@@ -212,9 +212,10 @@ class MonerisProcessor
         $requireBillingAddress = Arr::get($form_data, '__payment_require_billing_address') == 'yes';
         $paymentMode = $this->getPaymentMode($submission->form_id);
         $address = '';
+        $formDataRaw = $submission->form_data_raw;
 
         if ($requireBillingAddress) {
-            if (empty($formDataFormatted['address_input'])) {
+            if (empty($address)) {
                 return [
                     'response' => array(
                         'success' => 'false',
@@ -222,26 +223,20 @@ class MonerisProcessor
                     )
                 ];
             }
-            $address = explode(',', $formDataFormatted['address_input']);
         }
 
-        $hasAddress = isset($formDataFormatted['address_input']);
+        $hasAddress = isset($formDataRaw['address_input']);
+        $address = $formDataRaw['address_input'];
 
-        if ($hasAddress && !$address) {
-            $address = explode(',', $formDataFormatted['address_input']);
-        }
+        $address = array(
+            'city' => Arr::get($address, 'city', ''),
+            'country' => Arr::get($address, 'country', ''),
+            'postal_code' => Arr::get($address, 'zip_code', ''),
+            'state' => Arr::get($address, 'state', ''),
+            'address_line_1' => Arr::get($address, 'address_line_1', ''),
+            'address_line_2' => Arr::get($address, 'address_line_2', ''),
+        );
 
-        $country = CountryNames::getCountryCode(trim($address[5])) ?? '';
-
-
-        // if (($requireBillingAddress || $hasAddress) && ('Canada' != $country && 'United States (US)' != $country)) {
-        //     return [
-        //         'response' => array(
-        //             'success' => 'false',
-        //             'error' => __('Moneris payment only supports Canada and United States', 'wp-payment-form-pro')
-        //         )
-        //     ];
-        // }
 
         // make preloadRequestARgs
         $preloadRequestArgs = [];
@@ -280,13 +275,22 @@ class MonerisProcessor
         $preloadRequestArgs['action'] = 'preload';
         if ($requireBillingAddress || $hasAddress) {
             $preloadRequestArgs['billing_details'] = [
-                'address_1' => trim($address[0]) ?? '',
-                'address_2' => trim($address[1]) ?? '',
-                'city' => trim($address[2]) ?? '',
-                'province' => trim($address[3]) ?? '',
-                'country' => $country,
-                'postal_code' => trim($address[4]) ?? '',
+                'address_1' => trim($address['address_line_1']) ?? '',
+                'address_2' => trim($address['address_line_2']) ?? '',
+                'city' => trim($address['city']) ?? '',
+                'province' => trim($address['state']) ?? '',
+                'country' => $address['country'] ?? '',
+                'postal_code' => trim($address['postal_code']) ?? '',
             ];
+            $preloadRequestArgs['shipping_details'] = [
+                'address_1' => trim($address['address_line_1']) ?? '',
+                'address_2' => trim($address['address_line_2']) ?? '',
+                'city' => trim($address['city']) ?? '',
+                'province' => trim($address['state']) ?? '',
+                'country' => $address['country'] ?? '',
+                'postal_code' => trim($address['postal_code']) ?? '',
+            ];
+            
         }
 
         $cart = $this->getCartSummary($preloadRequestArgs, $submission, $form_data, $lineItems, $hasSubscriptions, $discountItems);
