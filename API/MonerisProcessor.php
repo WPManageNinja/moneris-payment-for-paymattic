@@ -214,6 +214,10 @@ class MonerisProcessor
         $address = '';
         $formDataRaw = $submission->form_data_raw;
 
+
+        $hasAddress = isset($formDataRaw['address_input']);
+        $address = $formDataRaw['address_input'];
+
         if ($requireBillingAddress) {
             if (empty($address)) {
                 return [
@@ -224,9 +228,6 @@ class MonerisProcessor
                 ];
             }
         }
-
-        $hasAddress = isset($formDataRaw['address_input']);
-        $address = $formDataRaw['address_input'];
 
         $address = array(
             'city' => Arr::get($address, 'city', ''),
