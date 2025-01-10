@@ -155,7 +155,7 @@ class MonerisProcessor
 
         if ($ticket && !$transaction) {
             $subscription = $this->getValidSubscription($submission);
-            $amount = number_format($subscription->initial_amount / 100, 2, '.', '') ?? '1.00';
+            $amount = number_format($subscription->initial_amount / 100, 2, '.', '') ?? '0.00';
         } else {
             $amount = number_format($transaction->payment_total / 100, 2, '.', '');
         }
@@ -180,6 +180,8 @@ class MonerisProcessor
                 'form'            => $form->post_title
             ]
         ];
+
+        // dd($checkoutData);
 
         $checkoutData = apply_filters('wppayform_moneris_checkout_data', $checkoutData, $submission, $transaction, $form, $form_data);
 
@@ -354,6 +356,7 @@ class MonerisProcessor
                     $taxItemCounter++;
                 } else {
                     $item = array(
+                        'url' => '',
                         'description' => preg_replace('/[^a-zA-Z0-9\s]/', '', strip_tags(html_entity_decode($item->item_name))),
                         'unit_cost' => $price,
                         'product_code' => (string) $item->id,
@@ -396,21 +399,28 @@ class MonerisProcessor
                 'product_code' => (string) $subscription->id,
                 'quantity' => '1',
             );
+
             $cart['items'][] = $item;
-            if (count($items) == 0) {
-                $subtotal = 0;
-                
+            $initialAmount = intval($subscription['initial_amount']);
+        
+            $subTotal = number_format($subscription->recurring_amount / 100, 2, '.', '');
+
+            if ($initialAmount > 0) {
                 $item = array(
-                    'description' => preg_replace('/[^a-zA-Z0-9\s]/', '', strip_tags(html_entity_decode($subscription->item_name))) . ' Sign up Fee',
-                    'unit_cost' => $subscription['initial_amount'] ? number_format($subscription['initial_amount'] / 100 , 2, '.', '') : '1.00',
+                    'description' => preg_replace('/[^a-zA-Z0-9\s]/', '', strip_tags(html_entity_decode($subscription->item_name))) . ' Signup Fee',
+                    'unit_cost' => number_format($subscription['initial_amount'] / 100 , 2, '.', ''),
                     'product_code' => (string) $subscription->id,
                     'quantity' => '1',
                 );
                 // add signup fee as item to the cart for user clarification
                 $cart['items'][] = $item;
-                $cart['subtotal'] = $subscription['initial_amount'] ? number_format($subscription['initial_amount'] / 100 , 2, '.', '') : '1.00'; // minimum amount to process the transaction or user will be charged the subscription amount as signup fee
+                $subTotal += number_format($initialAmount / 100 , 2, '.', ''); // minimum amount to process the transaction or user will be charged the subscription amount as signup fee
+                
             }
+
+            $cart['subtotal'] = number_format($subTotal, 2, '.', '');
         }
+
         return $cart;   
     }
 
@@ -464,10 +474,10 @@ class MonerisProcessor
         $initialAmount = $subscription['initial_amount'];
 
         if (!$hasLineItems) {
-            $paymentTotal = 100;
+            $paymentTotal = $subscription->recurring_amount;
 
             if ($initialAmount > 0) {
-                $paymentTotal = $initialAmount;
+                $paymentTotal = $paymentTotal +  $initialAmount;
             }
 
             $currentUserId = get_current_user_id();
@@ -686,6 +696,7 @@ class MonerisProcessor
             'card_brand' => sanitize_text_field($cardType),
             'card_last_4' => intval($lastFour),
         ];
+
         // Let's make the payment as paid
         $this->markAsPaid('paid', $updateData, $transaction);
     }
@@ -697,8 +708,11 @@ class MonerisProcessor
 
         $submissionData = array(
             'payment_status' => $status,
+            'payment_total' => $updateData['payment_total'],
             'updated_at' => current_time('Y-m-d H:i:s')
         );
+
+       
 
         $submissionModel->where('id', $transaction->submission_id)->update($submissionData);
 
@@ -806,6 +820,7 @@ class MonerisProcessor
             }
         }
 
+
         $confirmation = ConfirmationHelper::getFormConfirmation($submission->form_id, $submission);
         $returnData['payment'] = $vendorPayment;
         $returnData['confirmation'] = $confirmation;
@@ -822,8 +837,8 @@ class MonerisProcessor
         $data['vendor_subscriptipn_id'] = $vendorPayment['order_no'];
        
         if (!$transaction) {
-            $data['payment_total'] = ($subscription->initial_amount) > 0 ? $subscription->initial_amount : '100';
-            $data['initial_amount'] = ($subscription->initial_amount) > 0 ?$subscription->initial_amount :  '100';
+            $data['payment_total'] = $vendorPayment['amount'];
+            $data['initial_amount'] = ($subscription->initial_amount) > 0 ?$subscription->initial_amount :  '0';
         }
 
         $subscriptionModel = new Subscription();
@@ -839,10 +854,8 @@ class MonerisProcessor
             'content' => 'Moneris subscription payment has been marked as active'
         ]);
 
-        $vendor_data = Arr::get($subscription, 'vendor_response');
-
-        do_action('wppayform/subscription_payment_activated', $submission, $subscription, $submission->form_id, $vendor_data);
-        do_action('wppayform/subscription_payment_activate_moneris', $submission, $subscription, $submission->form_id, $vendor_data);
+        do_action('wppayform/subscription_payment_activated', $submission, $subscription, $submission->form_id, $vendorPayment);
+        do_action('wppayform/subscription_payment_activate_moneris', $submission, $subscription, $submission->form_id, $vendorPayment);
     
         if (!$transaction) {
             $subscriptionTypeTransaction = Transaction::where('submission_id', $submission->id)
@@ -862,21 +875,19 @@ class MonerisProcessor
             // we need to have at least 1.00 dollar transaction, which customer pay as subscription signup fee if there is no extra payment
             $submissionData = array(
                 'payment_status' => $status,
-                'payment_total' => ($subscription->initial_amount) > 0 ? $subscription->initial_amount : '100',
+                'payment_total' => $vendorPayment['amount'],
                 'updated_at' => current_time('Y-m-d H:i:s')
             );
     
             $submissionModel = new Submission();
-            $submissionModel->updateSubmission($submission->id, array(
-                'payment_status' => 'paid'
-            ));
+            $submissionModel->updateSubmission($submission->id, $submissionData);
 
             // now transaction related to the subscription but be sure it's not a subscription invoice or direct payment
             $updateData = [
                 'status' => $status,
                 'payment_note'     => maybe_serialize($vendorPayment),
                 'charge_id'        => sanitize_text_field(Arr::get($vendorPayment, 'order_no')),
-                'payment_total' => ($subscription->initial_amount) > 0 ? $subscription->initial_amount : '100',
+                'payment_total' => $vendorPayment['amount'],
                 'currency'      => $currency,
                 'card_brand' => sanitize_text_field($cardType),
                 'card_last_4' => intval($lastFour),
@@ -887,12 +898,17 @@ class MonerisProcessor
 
             // update transaction related submission also
             $submissionModel->updateSubmission($subscriptionTypeTransaction->submission_id, $submissionData);
-            
             $confirmation = ConfirmationHelper::getFormConfirmation($submission->form_id, $submission);
             $returnData['payment'] = $vendorPayment;
             $returnData['confirmation'] = $confirmation;
             wp_send_json_success($returnData, 200);
         }
+
+        $this->handlePaid($submission, $transaction, $vendorPayment);
+        $confirmation = ConfirmationHelper::getFormConfirmation($submission->form_id, $submission);
+        $returnData['payment'] = $vendorPayment;
+        $returnData['confirmation'] = $confirmation;
+        wp_send_json_success($returnData, 200);
 
     }
 }
