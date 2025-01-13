@@ -459,6 +459,17 @@ class MonerisProcessor
         if (!$subscription->recurring_amount) {
             return $originalArgs;
         }
+
+        if ($hasLineItems) {
+            wp_send_json_error(array(
+                'message' => 'Moneris payment method does not support subscriptions with one time payment',
+                'payment_error' => true,
+                'type' => 'error',
+                'form_events' => [
+                    'payment_failed'
+                ]
+            ), 423);
+        }
        
         if (count($discountItems) > 0) {
             wp_send_json_error(array(
@@ -474,8 +485,12 @@ class MonerisProcessor
         $initialAmount = $subscription['initial_amount'];
 
         if (!$hasLineItems) {
-            $paymentTotal = $subscription->recurring_amount;
+            // delete the one time payment transaction created on submission, as we are going to create a new transaction for subscription, and moneris doesn't support one time payment with subscription as of now
+            Transaction::where('submission_id', $submission->id)
+                ->where('transaction_type', 'one_time')
+                ->delete();
 
+            $paymentTotal = $subscription->recurring_amount;
             if ($initialAmount > 0) {
                 $paymentTotal = $paymentTotal +  $initialAmount;
             }
@@ -634,8 +649,7 @@ class MonerisProcessor
     }
 
     public function addTransactionUrl($transactions, $submissionId)
-    {
-      
+    {      
         if (count($transactions) > 0) {
             foreach ($transactions as $transaction) {
                 if ($transaction->charge_id) {
@@ -651,6 +665,7 @@ class MonerisProcessor
                 $transactions[] = $transaction;
             }
         }
+
         return $transactions;
     }
 
@@ -659,14 +674,14 @@ class MonerisProcessor
     {
         $transactionModel = new Transaction();
         $transaction = $transactionModel->where('submission_id', $submissionId)
+            ->orderBy('id', 'desc')
             ->first();
+
         return $transaction;
     }
 
     public function handlePaid($submission, $transaction, $vendorTransaction)
     {
-        $transaction = $this->getLastTransaction($submission->id);
-
         if (!$transaction || $transaction->payment_method != $this->method) {
             return;
         }
@@ -784,7 +799,20 @@ class MonerisProcessor
             ), 423);
         }
         if (isset($vendorPayment['recur_success']) && $vendorPayment['recur_success'] === 'true') {
-            $this->processSubscriptionSignup($submission, $transaction, $vendorPayment);
+            $subscriptionTransaction = Transaction::where('submission_id', $submission->id)
+                ->where('transaction_type', 'subscription')
+                ->first();
+            if (!$subscriptionTransaction) {
+                wp_send_json_error(array(
+                    'message' => 'Subscription transaction not found',
+                    'payment_error' => true,
+                    'type' => 'error',
+                    'form_events' => [
+                        'payment_failed'
+                    ]
+                ), 423);
+            }
+            $this->processSubscriptionSignup($submission, $subscriptionTransaction, $vendorPayment);
         }
         if ( $transaction ) {
             if ( $response['success'] === 'true') {
@@ -835,12 +863,9 @@ class MonerisProcessor
         $data['status'] = 'active';
         // vendor_subscriptipn_id is intentionally mistaken as it is in the DB
         $data['vendor_subscriptipn_id'] = $vendorPayment['order_no'];
+        $data['vendor_response'] = maybe_serialize($vendorPayment);
+        $data['payment_total'] = $vendorPayment['amount'] * 100;
        
-        if (!$transaction) {
-            $data['payment_total'] = $vendorPayment['amount'];
-            $data['initial_amount'] = ($subscription->initial_amount) > 0 ?$subscription->initial_amount :  '0';
-        }
-
         $subscriptionModel = new Subscription();
 
         $subscriptionModel->updateSubscription($subscription['id'], $data);
@@ -856,55 +881,46 @@ class MonerisProcessor
 
         do_action('wppayform/subscription_payment_activated', $submission, $subscription, $submission->form_id, $vendorPayment);
         do_action('wppayform/subscription_payment_activate_moneris', $submission, $subscription, $submission->form_id, $vendorPayment);
-    
-        if (!$transaction) {
-            $subscriptionTypeTransaction = Transaction::where('submission_id', $submission->id)
-                ->where('transaction_type', 'subscription')
-                ->first();
-            // Its a subscription only transaction where the payment is made 1.00 as moneris dose not allow 0 dollar transaction
-            $status = 'paid';
-            $currency = $transaction->currency;
-            $cardFist6Last4 = $vendorPayment['first6last4'];
-            $lastFour = substr($cardFist6Last4, -4);
-            $cardType = $vendorPayment['card_type'];
-            if ('V' === $cardType) {
-                $cardType = 'visa';
-            }
 
-            // update submission status to remove confusion as it is just a subscription signup not a payment,
-            // we need to have at least 1.00 dollar transaction, which customer pay as subscription signup fee if there is no extra payment
-            $submissionData = array(
-                'payment_status' => $status,
-                'payment_total' => $vendorPayment['amount'],
-                'updated_at' => current_time('Y-m-d H:i:s')
-            );
-    
-            $submissionModel = new Submission();
-            $submissionModel->updateSubmission($submission->id, $submissionData);
-
-            // now transaction related to the subscription but be sure it's not a subscription invoice or direct payment
-            $updateData = [
-                'status' => $status,
-                'payment_note'     => maybe_serialize($vendorPayment),
-                'charge_id'        => sanitize_text_field(Arr::get($vendorPayment, 'order_no')),
-                'payment_total' => $vendorPayment['amount'],
-                'currency'      => $currency,
-                'card_brand' => sanitize_text_field($cardType),
-                'card_last_4' => intval($lastFour),
-            ];
-
-            $transactionModel = new Transaction();
-            $transactionModel->updateTransaction($subscriptionTypeTransaction->id, $updateData);
-
-            // update transaction related submission also
-            $submissionModel->updateSubmission($subscriptionTypeTransaction->submission_id, $submissionData);
-            $confirmation = ConfirmationHelper::getFormConfirmation($submission->form_id, $submission);
-            $returnData['payment'] = $vendorPayment;
-            $returnData['confirmation'] = $confirmation;
-            wp_send_json_success($returnData, 200);
+          
+        // Its a subscription only transaction where the payment is made 1.00 as moneris dose not allow 0 dollar transaction
+        $status = 'paid';
+        $currency = $transaction->currency;
+        $cardFist6Last4 = $vendorPayment['first6last4'];
+        $lastFour = substr($cardFist6Last4, -4);
+        $cardType = $vendorPayment['card_type'];
+        if ('V' === $cardType) {
+            $cardType = 'visa';
         }
 
-        $this->handlePaid($submission, $transaction, $vendorPayment);
+        // update submission status to remove confusion as it is just a subscription signup not a payment,
+        // we need to have at least 1.00 dollar transaction, which customer pay as subscription signup fee if there is no extra payment
+        $submissionData = array(
+            'payment_status' => $status,
+            'payment_total' => $vendorPayment['amount'] * 100,
+            'updated_at' => current_time('Y-m-d H:i:s')
+        );
+
+        $submissionModel = new Submission();
+        $submissionModel->updateSubmission($submission->id, $submissionData);
+
+        // now transaction related to the subscription but be sure it's not a subscription invoice or direct payment
+        $updateData = [
+            'status' => $status,
+            'payment_note'     => maybe_serialize($vendorPayment),
+            'charge_id'        => sanitize_text_field(Arr::get($vendorPayment, 'order_no')),
+            'payment_total' => $vendorPayment['amount'] * 100,
+            'currency'      => $currency,
+            'card_brand' => sanitize_text_field($cardType),
+            'card_last_4' => intval($lastFour),
+        ];
+
+       
+        $transactionModel = new Transaction();
+        $transactionModel->updateTransaction($transaction->id, $updateData);
+
+        // update transaction related submission also
+        $submissionModel->updateSubmission($transaction->submission_id, $submissionData);
         $confirmation = ConfirmationHelper::getFormConfirmation($submission->form_id, $submission);
         $returnData['payment'] = $vendorPayment;
         $returnData['confirmation'] = $confirmation;
