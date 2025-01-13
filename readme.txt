@@ -3,7 +3,7 @@ Contributors: wpmanageninja, akmelias, hasanuzzamanshamim
 Tags: payment form, donations, recurring-payments, payments, moneris, Canada, USA region Payments
 Requires at least: 4.5.2
 Tested up to: 6.6
-Stable tag: 1.0.2
+Stable tag: 1.0.3
 Requires PHP: 7.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -28,6 +28,8 @@ Moneris is a popular payment gateway based in Canda and USA.
 
 == Changelog ==
 
+= 1.0.3 Jan 23, 2025 =
+Fixes: Subscription payment
 
 = 1.0.0 =
 * Init Release

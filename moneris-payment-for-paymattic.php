@@ -10,7 +10,7 @@
  * Plugin Name: Moneris Payment for paymattic
  * Plugin URI: https://paymattic.com/
  * Description: Moneris payment gateway for paymattic. Moneris is the leading payment gateway in Canada and USA.
- * Version: 1.0.2
+ * Version: 1.0.3
  * Author: WPManageNinja LLC
  * Author URI: https://paymattic.com/
  * License: GPLv2 or later
@@ -27,7 +27,7 @@ defined('ABSPATH') or die;
 define('MONERIS_PAYMENT_FOR_PAYMATTIC', true);
 define('MONERIS_PAYMENT_FOR_PAYMATTIC_DIR', __DIR__);
 define('MONERIS_PAYMENT_FOR_PAYMATTIC_URL', plugin_dir_url(__FILE__));
-define('MONERIS_PAYMENT_FOR_PAYMATTIC_VERSION', '1.0.2');
+define('MONERIS_PAYMENT_FOR_PAYMATTIC_VERSION', '1.0.3');
 
 
 if (!class_exists('MonerisPaymentForPaymattic')) {
