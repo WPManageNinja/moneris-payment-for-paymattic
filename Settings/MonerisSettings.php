@@ -157,7 +157,19 @@ class MonerisSettings extends BasePaymentMethod
 
         // lets try without token which is enough for a single person updateCheckup
         $response = wp_remote_get($githubApi);
+        $responseCode = wp_remote_retrieve_response_code($response);
+        if ($responseCode >= 400) {
+            return $result;
+        }
+
+        if (isset($releases->documentation_url) || is_wp_error($response)) {
+            return $result;
+        }
+
         $releases = json_decode($response['body']);
+        if (!is_array($releases) || empty($releases)) {
+            return $result;
+        }
 
         // try with tokens we have in development
         if (isset($releases->documentation_url)) {
