@@ -56,6 +56,7 @@ class MonerisElement extends BaseComponent
             'method_handler' => $this->gateWayName,
             'postion_group' => 'payment_method',
             'single_only' => true,
+            'is_pro' => 'yes',
             'editor_elements' => array(
                 'label' => array(
                     'label' => 'Field Label',
